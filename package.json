@@ -1,0 +1,41 @@
+{
+  "name": "curly",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "user:create": "tsx --env-file=.env scripts/user-create.ts",
+    "user:reset-password": "tsx --env-file=.env scripts/user-reset-password.ts",
+    "user:disable": "tsx --env-file=.env scripts/user-disable.ts",
+    "bootstrap-admin": "tsx --env-file=.env scripts/bootstrap-admin.ts"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@prisma/client": "^6.19.2",
+    "argon2": "^0.44.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "next": "^15.5.12",
+    "otplib": "^13.3.0",
+    "prisma": "^6.19.2",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^15.5.12",
+    "typescript": "^5"
+  }
+}
