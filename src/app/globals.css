@@ -11,6 +11,8 @@
   --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   --radius-xl: 28px;
   --radius-lg: 20px;
+  --font-display: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  --font-body: "Avenir Next", "Segoe UI Variable Text", "Trebuchet MS", Verdana, sans-serif;
 }
 
 * {
@@ -29,7 +31,7 @@ body {
     radial-gradient(circle at right 10%, rgba(56, 189, 248, 0.12), transparent 26%),
     linear-gradient(180deg, #09111f 0%, #040712 60%, #02040c 100%);
   color: var(--text);
-  font-family: var(--font-body), sans-serif;
+  font-family: var(--font-body);
 }
 
 a {
@@ -81,7 +83,7 @@ code {
 .brand strong,
 .hero h1,
 .section-heading h2 {
-  font-family: var(--font-display), sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
   letter-spacing: 0.03em;
 }
@@ -102,7 +104,7 @@ code {
   border-radius: 14px;
   background: linear-gradient(135deg, var(--accent), #ffb86f);
   color: #1a120d;
-  font-family: var(--font-display), sans-serif;
+  font-family: var(--font-display);
   font-size: 1.7rem;
 }
 
