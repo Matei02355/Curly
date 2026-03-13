@@ -46,6 +46,8 @@ Missing flags fall back to prompts. The installer will:
 9. Build and start the Curly app container.
 10. Configure nginx, request the Let's Encrypt certificate, enable HTTPS redirect, and dry-run renewal.
 
+Point your domain directly at the server before running the installer. If you use Cloudflare, set the record to `DNS only` during install so the DNS validation and Let's Encrypt HTTP challenge can complete cleanly.
+
 ## Media Layout
 
 Curly assumes one local media root. The default layout is:

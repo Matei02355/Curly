@@ -95,11 +95,29 @@ case "${VERSION_ID:-}" in
     ;;
 esac
 
-SERVER_IP="$(curl -fsSL https://api64.ipify.org)"
-DNS_IP="$(getent ahostsv4 "$DOMAIN" | awk '{print $1; exit}')"
+SERVER_IPV4="$(curl -4fsS --max-time 5 https://api.ipify.org || true)"
+SERVER_IPV6="$(curl -6fsS --max-time 5 https://api64.ipify.org || true)"
+DNS_IPV4S="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+DNS_IPV6S="$(getent ahostsv6 "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u || true)"
 
-if [[ -z "$DNS_IP" || "$DNS_IP" != "$SERVER_IP" ]]; then
-  echo "DNS for $DOMAIN must point to $SERVER_IP before continuing." >&2
+dns_points_to_server() {
+  local expected_ip="$1"
+  local resolved_ips="$2"
+
+  [[ -n "$expected_ip" ]] || return 1
+  grep -Fxq -- "$expected_ip" <<<"$resolved_ips"
+}
+
+if [[ -z "$SERVER_IPV4" && -z "$SERVER_IPV6" ]]; then
+  echo "Unable to determine this server's public IP for DNS validation." >&2
+  exit 1
+fi
+
+if ! dns_points_to_server "$SERVER_IPV4" "$DNS_IPV4S" && ! dns_points_to_server "$SERVER_IPV6" "$DNS_IPV6S"; then
+  echo "DNS for $DOMAIN must point directly to this server before continuing." >&2
+  [[ -n "$SERVER_IPV4" ]] && echo "  Expected A record: $SERVER_IPV4" >&2
+  [[ -n "$SERVER_IPV6" ]] && echo "  Expected AAAA record: $SERVER_IPV6" >&2
+  echo "  If you use Cloudflare, switch the record to DNS only during install." >&2
   exit 1
 fi
 
