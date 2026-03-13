@@ -10,7 +10,7 @@ Curly is a self-hosted media control panel for personal movie and anime librarie
 - Audit trail for logins, disables, password resets, and library refreshes
 - Admin-only file manager on the same media root Jellyfin scans
 - Terminal commands for user creation, password resets, and disabling accounts
-- Ubuntu 24.04 install flow with Docker Compose, nginx, and Certbot
+- Ubuntu 22.04/24.04 install flow with Docker Compose, nginx, and Certbot
 
 ## Stack
 
@@ -23,7 +23,7 @@ Curly is a self-hosted media control panel for personal movie and anime librarie
 
 ## Quick Install
 
-Clone the repo onto an Ubuntu 24.04 server, point your DNS record at that server, then run:
+Clone the repo onto an Ubuntu 22.04 or 24.04 server, point your DNS record at that server, then run:
 
 ```bash
 git clone https://github.com/Matei02355/Curly.git
@@ -37,7 +37,7 @@ sudo ./install.sh \
 
 Missing flags fall back to prompts. The installer will:
 
-1. Verify Ubuntu 24.04, root access, and DNS alignment.
+1. Verify Ubuntu 22.04/24.04, root access, and DNS alignment.
 2. Install Docker, Compose, Node.js, nginx, Certbot, UFW, and PostgreSQL client tools.
 3. Create the media folders under the chosen media root.
 4. Write `.env` values for Curly, PostgreSQL, Jellyfin, and Filebrowser.
