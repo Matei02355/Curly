@@ -26,6 +26,8 @@ Curly is a self-hosted media control panel for personal movie and anime librarie
 Clone the repo onto an Ubuntu 24.04 server, point your DNS record at that server, then run:
 
 ```bash
+git clone https://github.com/Matei02355/Curly.git
+cd Curly
 sudo ./install.sh \
   --domain media.example.com \
   --email admin@example.com \
@@ -91,6 +93,7 @@ npm run user:disable -- --username demo
 If you are not using `install.sh`, use this order:
 
 ```bash
+cd /path/to/Curly
 cp .env.example .env
 npm ci
 npm run prisma:generate
