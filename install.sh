@@ -80,6 +80,49 @@ prompt_if_missing DOMAIN "Domain"
 prompt_if_missing EMAIL "Let's Encrypt email"
 prompt_secret_if_missing ADMIN_PASSWORD "Initial Curly admin password"
 
+upsert_env_value() {
+  local key="$1"
+  local value="$2"
+
+  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*$|${key}=${value}|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+bootstrap_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  if [[ -f "$PROJECT_DIR/.env.example" ]]; then
+    cp "$PROJECT_DIR/.env.example" "$ENV_FILE"
+    return
+  fi
+
+  cat > "$ENV_FILE" <<'EOF'
+APP_NAME=Curly
+APP_URL=http://localhost:3000
+DATABASE_URL=postgresql://curly:curly@127.0.0.1:5432/curly?schema=public
+DATABASE_URL_DOCKER=postgresql://curly:curly@postgres:5432/curly?schema=public
+SESSION_COOKIE_NAME=curly_session
+SESSION_TTL_DAYS=14
+JELLYFIN_URL=http://127.0.0.1:8096
+JELLYFIN_INTERNAL_URL=http://jellyfin:8096
+JELLYFIN_API_KEY=
+JELLYFIN_USER_ID=
+JELLYFIN_SERVICE_USERNAME=curly-service
+JELLYFIN_SERVICE_PASSWORD=change-me
+JELLYFIN_SERVER_NAME=Curly Media
+FILEBROWSER_URL=http://127.0.0.1:8080
+FILEBROWSER_INTERNAL_URL=http://filebrowser:8080
+FILEBROWSER_PROXY_PATH=/api/files
+MEDIA_ROOT=/srv/curly/media
+POSTGRES_PASSWORD=curly
+EOF
+}
+
 source /etc/os-release
 if [[ "${ID:-}" != "ubuntu" ]]; then
   echo "Curly install.sh currently targets Ubuntu only." >&2
@@ -162,16 +205,18 @@ mkdir -p /var/www/html
 POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 JELLYFIN_SERVICE_PASSWORD="$(openssl rand -hex 24)"
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  cp "$PROJECT_DIR/.env.example" "$ENV_FILE"
-fi
-
-sed -i "s|^APP_URL=.*$|APP_URL=https://$DOMAIN|" "$ENV_FILE"
-sed -i "s|^DATABASE_URL=.*$|DATABASE_URL=postgresql://curly:${POSTGRES_PASSWORD}@127.0.0.1:5432/curly?schema=public|" "$ENV_FILE"
-sed -i "s|^DATABASE_URL_DOCKER=.*$|DATABASE_URL_DOCKER=postgresql://curly:${POSTGRES_PASSWORD}@postgres:5432/curly?schema=public|" "$ENV_FILE"
-sed -i "s|^MEDIA_ROOT=.*$|MEDIA_ROOT=${MEDIA_ROOT}|" "$ENV_FILE"
-sed -i "s|^POSTGRES_PASSWORD=.*$|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" "$ENV_FILE" || echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" >> "$ENV_FILE"
-sed -i "s|^JELLYFIN_SERVICE_PASSWORD=.*$|JELLYFIN_SERVICE_PASSWORD=${JELLYFIN_SERVICE_PASSWORD}|" "$ENV_FILE"
+bootstrap_env_file
+upsert_env_value "APP_URL" "https://$DOMAIN"
+upsert_env_value "DATABASE_URL" "postgresql://curly:${POSTGRES_PASSWORD}@127.0.0.1:5432/curly?schema=public"
+upsert_env_value "DATABASE_URL_DOCKER" "postgresql://curly:${POSTGRES_PASSWORD}@postgres:5432/curly?schema=public"
+upsert_env_value "MEDIA_ROOT" "$MEDIA_ROOT"
+upsert_env_value "POSTGRES_PASSWORD" "$POSTGRES_PASSWORD"
+upsert_env_value "JELLYFIN_SERVICE_PASSWORD" "$JELLYFIN_SERVICE_PASSWORD"
+upsert_env_value "JELLYFIN_URL" "http://127.0.0.1:8096"
+upsert_env_value "JELLYFIN_INTERNAL_URL" "http://jellyfin:8096"
+upsert_env_value "FILEBROWSER_URL" "http://127.0.0.1:8080"
+upsert_env_value "FILEBROWSER_INTERNAL_URL" "http://filebrowser:8080"
+upsert_env_value "FILEBROWSER_PROXY_PATH" "/api/files"
 
 cd "$PROJECT_DIR"
 npm ci
