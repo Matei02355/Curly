@@ -86,8 +86,8 @@ if [[ "${ID:-}" != "ubuntu" ]]; then
   exit 1
 fi
 
-if [[ "${VERSION_ID:-}" != "24.04" ]]; then
-  echo "Curly install.sh expects Ubuntu 24.04 LTS." >&2
+if [[ "${VERSION_ID:-}" != "22.04" && "${VERSION_ID:-}" != "24.04" ]]; then
+  echo "Curly install.sh expects Ubuntu 22.04 or 24.04 LTS." >&2
   exit 1
 fi
 
