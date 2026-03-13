@@ -33,8 +33,6 @@ services:
     volumes:
       - filebrowser_data:/database
       - ${MEDIA_ROOT:-/srv/curly/media}:/srv/media
-    ports:
-      - "127.0.0.1:8080:8080"
 
   app:
     build:

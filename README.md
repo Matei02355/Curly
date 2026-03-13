@@ -21,6 +21,8 @@ Curly is a self-hosted media control panel for personal movie and anime librarie
 - Docker Compose
 - Host `nginx` and Certbot
 
+`filebrowser` stays internal to the Docker network and is exposed to users through Curly's `/api/files` proxy instead of a separate host port.
+
 ## Quick Install
 
 Clone the repo onto an Ubuntu 22.04 or 24.04 server, point your DNS record at that server, then run:
