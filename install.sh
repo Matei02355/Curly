@@ -86,10 +86,14 @@ if [[ "${ID:-}" != "ubuntu" ]]; then
   exit 1
 fi
 
-if [[ "${VERSION_ID:-}" != "24.04" ]]; then
-  echo "Curly install.sh expects Ubuntu 24.04 LTS." >&2
-  exit 1
-fi
+case "${VERSION_ID:-}" in
+  22.04|24.04)
+    ;;
+  *)
+    echo "Curly install.sh supports Ubuntu 22.04 LTS and 24.04 LTS." >&2
+    exit 1
+    ;;
+esac
 
 SERVER_IP="$(curl -fsSL https://api64.ipify.org)"
 DNS_IP="$(getent ahostsv4 "$DOMAIN" | awk '{print $1; exit}')"
