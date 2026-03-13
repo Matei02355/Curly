@@ -91,6 +91,16 @@ upsert_env_value() {
   fi
 }
 
+read_env_value() {
+  local key="$1"
+
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return 1
+  fi
+
+  awk -F= -v target_key="$key" '$1 == target_key { print substr($0, index($0, "=") + 1); exit }' "$ENV_FILE"
+}
+
 bootstrap_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     return
@@ -151,6 +161,14 @@ dns_points_to_server() {
   grep -Fxq -- "$expected_ip" <<<"$resolved_ips"
 }
 
+sync_postgres_password() {
+  local escaped_password="${POSTGRES_PASSWORD//\'/\'\'}"
+
+  docker compose exec -T postgres \
+    psql -U curly -d curly -v ON_ERROR_STOP=1 \
+    -c "ALTER USER curly WITH PASSWORD '${escaped_password}';" >/dev/null
+}
+
 if [[ -z "$SERVER_IPV4" && -z "$SERVER_IPV6" ]]; then
   echo "Unable to determine this server's public IP for DNS validation." >&2
   exit 1
@@ -202,10 +220,18 @@ install_host_packages
 mkdir -p "$MEDIA_ROOT"/movies "$MEDIA_ROOT"/anime "$MEDIA_ROOT"/shows "$MEDIA_ROOT"/uploads
 mkdir -p /var/www/html
 
-POSTGRES_PASSWORD="$(openssl rand -hex 24)"
-JELLYFIN_SERVICE_PASSWORD="$(openssl rand -hex 24)"
-
 bootstrap_env_file
+POSTGRES_PASSWORD="$(read_env_value "POSTGRES_PASSWORD" || true)"
+JELLYFIN_SERVICE_PASSWORD="$(read_env_value "JELLYFIN_SERVICE_PASSWORD" || true)"
+
+if [[ -z "$POSTGRES_PASSWORD" || "$POSTGRES_PASSWORD" == "curly" ]]; then
+  POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+fi
+
+if [[ -z "$JELLYFIN_SERVICE_PASSWORD" || "$JELLYFIN_SERVICE_PASSWORD" == "change-me" ]]; then
+  JELLYFIN_SERVICE_PASSWORD="$(openssl rand -hex 24)"
+fi
+
 upsert_env_value "APP_URL" "https://$DOMAIN"
 upsert_env_value "DATABASE_URL" "postgresql://curly:${POSTGRES_PASSWORD}@127.0.0.1:5432/curly?schema=public"
 upsert_env_value "DATABASE_URL_DOCKER" "postgresql://curly:${POSTGRES_PASSWORD}@postgres:5432/curly?schema=public"
@@ -230,6 +256,8 @@ for _ in {1..60}; do
   fi
   sleep 2
 done
+
+sync_postgres_password
 
 npm run prisma:migrate:deploy
 npm run bootstrap-admin -- --username "$ADMIN_USER" --password "$ADMIN_PASSWORD"

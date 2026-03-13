@@ -120,6 +120,8 @@ Start from `.env.example`. Important keys:
 - `FILEBROWSER_PROXY_PATH`: default `/api/files`
 
 The repository includes `.env.example`, and `install.sh` will create `.env` from it automatically on a fresh checkout.
+Installer reruns keep the existing PostgreSQL and Jellyfin service passwords from `.env` so they stay aligned with persistent Docker volumes.
+If PostgreSQL was already initialized, the installer also re-applies the `.env` password to the `curly` database user before Prisma migrations run.
 
 ## Operations
 
