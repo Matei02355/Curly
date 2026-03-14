@@ -84,6 +84,14 @@ async function assertOk(response, context) {
   throw new Error(`${context}: ${response.status}${await readErrorBody(response)}`);
 }
 
+async function readJsonResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 async function authenticateServiceUser(baseUrl, username, password) {
   const response = await fetch(`${baseUrl}/Users/AuthenticateByName`, {
     method: "POST",
@@ -204,13 +212,39 @@ async function getApiKeys(baseUrl, authHeaders) {
   });
 
   await assertOk(response, "Failed to read Jellyfin API keys");
-  return response.json();
+  return readJsonResponse(response);
 }
 
-function findCurlyApiKey(items) {
+function getApiKeyItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.Items)) {
+    return payload.Items;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  return payload ? [payload] : [];
+}
+
+function getApiKeyAppName(item) {
+  return item?.AppName ?? item?.appName ?? item?.Name ?? item?.name ?? null;
+}
+
+function getApiKeyToken(item) {
+  return item?.AccessToken ?? item?.accessToken ?? item?.Token ?? item?.token ?? null;
+}
+
+function findCurlyApiKey(payload) {
+  const items = getApiKeyItems(payload);
+
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (item?.AppName === "Curly" && item?.AccessToken) {
+    if (getApiKeyAppName(item) === "Curly" && getApiKeyToken(item)) {
       return item;
     }
   }
@@ -220,9 +254,9 @@ function findCurlyApiKey(items) {
 
 async function ensureCurlyApiKey(baseUrl, authHeaders) {
   const existingKeys = await getApiKeys(baseUrl, authHeaders);
-  const existingKey = findCurlyApiKey(existingKeys.Items ?? []);
+  const existingKey = findCurlyApiKey(existingKeys);
 
-  if (existingKey?.AccessToken) {
+  if (getApiKeyToken(existingKey)) {
     return existingKey;
   }
 
@@ -231,15 +265,25 @@ async function ensureCurlyApiKey(baseUrl, authHeaders) {
     headers: authHeaders,
   });
   await assertOk(createResponse, "Failed to create Curly Jellyfin API key");
+  const createdPayload = await readJsonResponse(createResponse);
+  const createdKey = findCurlyApiKey(createdPayload);
 
-  const updatedKeys = await getApiKeys(baseUrl, authHeaders);
-  const createdKey = findCurlyApiKey(updatedKeys.Items ?? []);
-
-  if (!createdKey?.AccessToken) {
-    throw new Error("Could not retrieve Curly Jellyfin API key.");
+  if (getApiKeyToken(createdKey)) {
+    return createdKey;
   }
 
-  return createdKey;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const updatedKeys = await getApiKeys(baseUrl, authHeaders);
+    const createdKey = findCurlyApiKey(updatedKeys);
+
+    if (getApiKeyToken(createdKey)) {
+      return createdKey;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error("Could not retrieve Curly Jellyfin API key after creation.");
 }
 
 async function main() {
@@ -256,18 +300,32 @@ async function main() {
   await waitForServer(baseUrl);
 
   let authPayload = await authenticateServiceUser(baseUrl, username, password);
+  let startupBootstrapAttempted = false;
+  let startupBootstrapCompleted = false;
 
   if (!authPayload?.AccessToken || !authPayload.User?.Id) {
-    await attemptStartupBootstrap(baseUrl, values, username, password);
+    startupBootstrapAttempted = true;
+    startupBootstrapCompleted = await attemptStartupBootstrap(
+      baseUrl,
+      values,
+      username,
+      password,
+    );
     authPayload = await authenticateServiceUser(baseUrl, username, password);
   }
 
-  const token = authPayload.AccessToken;
-  const userId = authPayload.User?.Id;
+  const token = authPayload?.AccessToken;
+  const userId = authPayload?.User?.Id;
 
   if (!token || !userId) {
+    const context = startupBootstrapAttempted
+      ? startupBootstrapCompleted
+        ? "Jellyfin startup completed, but the Curly service account could not authenticate afterward."
+        : "Jellyfin startup endpoints did not accept the bootstrap request, which usually means the server was already initialized."
+      : "The Curly service account could not authenticate.";
+
     throw new Error(
-      "Failed to authenticate the Jellyfin service user. If Jellyfin was already initialized, make sure JELLYFIN_SERVICE_PASSWORD in .env still matches that account.",
+      `${context} If Jellyfin was already initialized, make sure JELLYFIN_SERVICE_PASSWORD in .env still matches that account.`,
     );
   }
 
@@ -275,9 +333,14 @@ async function main() {
 
   await ensureLibraries(baseUrl, authHeaders);
   const latestKey = await ensureCurlyApiKey(baseUrl, authHeaders);
+  const latestKeyToken = getApiKeyToken(latestKey);
+
+  if (!latestKeyToken) {
+    throw new Error("Jellyfin returned an API key payload without an access token.");
+  }
 
   let nextEnv = replaceEnvValue(envText, "JELLYFIN_USER_ID", userId);
-  nextEnv = replaceEnvValue(nextEnv, "JELLYFIN_API_KEY", latestKey.AccessToken);
+  nextEnv = replaceEnvValue(nextEnv, "JELLYFIN_API_KEY", latestKeyToken);
   await fs.writeFile(envPath, nextEnv, "utf8");
 
   console.log("Jellyfin initialization complete.");
