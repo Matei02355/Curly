@@ -56,6 +56,8 @@ services:
       FILEBROWSER_INTERNAL_URL: ${FILEBROWSER_INTERNAL_URL}
       FILEBROWSER_PROXY_PATH: ${FILEBROWSER_PROXY_PATH:-/api/files}
       MEDIA_ROOT: ${MEDIA_ROOT:-/srv/curly/media}
+    volumes:
+      - ${MEDIA_ROOT:-/srv/curly/media}:${MEDIA_ROOT:-/srv/curly/media}:ro
     ports:
       - "127.0.0.1:3000:3000"
 

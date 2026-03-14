@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { assertSameOrigin, getRequestContext } from "@/lib/request";
+import { assertSameOrigin, buildPublicUrl, getRequestContext } from "@/lib/request";
 import { disableUserRecord } from "@/lib/users";
 
 type DisableRouteProps = {
@@ -28,11 +28,11 @@ export async function POST(request: Request, { params }: DisableRouteProps) {
     });
 
     return NextResponse.redirect(
-      new URL("/admin/users?success=User+disabled", request.url),
+      buildPublicUrl(request, "/admin/users?success=User+disabled"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Disable+failed";
-    return NextResponse.redirect(new URL(`/admin/users?error=${message}`, request.url));
+    return NextResponse.redirect(buildPublicUrl(request, `/admin/users?error=${message}`));
   }
 }

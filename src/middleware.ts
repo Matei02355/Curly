@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env } from "@/lib/env";
+import { buildPublicUrl } from "@/lib/request";
 
 const protectedPrefixes = ["/watch", "/files", "/admin", "/setup/2fa"];
 
@@ -12,7 +13,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (!request.cookies.get(env.SESSION_COOKIE_NAME)?.value) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(buildPublicUrl(request, "/login"));
   }
 
   return NextResponse.next();

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/prisma";
-import { assertSameOrigin } from "@/lib/request";
+import { assertSameOrigin, buildPublicUrl } from "@/lib/request";
 
 type RevokeRouteProps = {
   params: Promise<{ id: string }>;
@@ -25,11 +25,13 @@ export async function POST(request: Request, { params }: RevokeRouteProps) {
     });
 
     return NextResponse.redirect(
-      new URL("/admin/security?success=Session+revoked", request.url),
+      buildPublicUrl(request, "/admin/security?success=Session+revoked"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Revoke+failed";
-    return NextResponse.redirect(new URL(`/admin/security?error=${message}`, request.url));
+    return NextResponse.redirect(
+      buildPublicUrl(request, `/admin/security?error=${message}`),
+    );
   }
 }

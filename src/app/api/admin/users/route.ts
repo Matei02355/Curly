@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { assertSameOrigin, getRequestContext, readFormValue } from "@/lib/request";
+import {
+  assertSameOrigin,
+  buildPublicUrl,
+  getRequestContext,
+  readFormValue,
+} from "@/lib/request";
 import { createUserRecord, ensurePasswordStrength, parseRole } from "@/lib/users";
 
 export async function POST(request: Request) {
@@ -26,11 +31,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.redirect(
-      new URL("/admin/users?success=User+created", request.url),
+      buildPublicUrl(request, "/admin/users?success=User+created"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "User+creation+failed";
-    return NextResponse.redirect(new URL(`/admin/users?error=${message}`, request.url));
+    return NextResponse.redirect(buildPublicUrl(request, `/admin/users?error=${message}`));
   }
 }

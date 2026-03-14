@@ -378,6 +378,7 @@ code {
 
 .stack-form input,
 .stack-form select,
+.stack-form textarea,
 .inline-form input {
   min-height: 48px;
   padding: 0 16px;
@@ -385,6 +386,18 @@ code {
   border: 1px solid var(--line);
   background: rgba(15, 23, 42, 0.78);
   color: var(--text);
+}
+
+.stack-form textarea {
+  min-height: 148px;
+  padding: 14px 16px;
+  resize: vertical;
+}
+
+.helper-copy,
+.table-path {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .inline-link {

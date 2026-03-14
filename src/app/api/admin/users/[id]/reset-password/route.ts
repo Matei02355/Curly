@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { assertSameOrigin, getRequestContext, readFormValue } from "@/lib/request";
+import {
+  assertSameOrigin,
+  buildPublicUrl,
+  getRequestContext,
+  readFormValue,
+} from "@/lib/request";
 import { ensurePasswordStrength, resetUserPassword } from "@/lib/users";
 
 type ResetPasswordRouteProps = {
@@ -29,11 +34,11 @@ export async function POST(request: Request, { params }: ResetPasswordRouteProps
     });
 
     return NextResponse.redirect(
-      new URL("/admin/users?success=Password+reset", request.url),
+      buildPublicUrl(request, "/admin/users?success=Password+reset"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Reset+failed";
-    return NextResponse.redirect(new URL(`/admin/users?error=${message}`, request.url));
+    return NextResponse.redirect(buildPublicUrl(request, `/admin/users?error=${message}`));
   }
 }

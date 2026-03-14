@@ -26,6 +26,7 @@ export function AppShell({ session, children }: AppShellProps) {
               <Link href="/">Home</Link>
               <Link href="/watch">Watch</Link>
               {session.user.role === Role.ADMIN ? <Link href="/files">Files</Link> : null}
+              {session.user.role === Role.ADMIN ? <Link href="/admin/catalog">Catalog</Link> : null}
               {session.user.role === Role.ADMIN ? (
                 <Link href="/admin/users">Admin</Link>
               ) : null}

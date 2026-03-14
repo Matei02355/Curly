@@ -1,4 +1,9 @@
 import { env } from "@/lib/env";
+import {
+  getManualCatalogItem,
+  listManualCatalogItems,
+  listManualSections,
+} from "@/lib/media/manual";
 import { mockMedia, mockSections, type MediaItem } from "@/lib/media/mock-data";
 
 type JellyfinItem = {
@@ -17,6 +22,48 @@ type JellyfinSection = {
   title: string;
   items: MediaItem[];
 };
+
+async function getJellyfinSections(): Promise<JellyfinSection[] | null> {
+  if (!hasLiveJellyfin()) {
+    return null;
+  }
+
+  try {
+    const [latest, folders] = await Promise.all([
+      jellyfinFetch<JellyfinItem[]>(
+        `/Items/Latest?Limit=12&Fields=Overview,Genres,RunTimeTicks,PremiereDate,CommunityRating`,
+      ),
+      jellyfinFetch<{ Items: Array<{ Id: string; Name: string }> }>(
+        "/Library/MediaFolders",
+      ),
+    ]);
+
+    const dynamicSections = await Promise.all(
+      folders.Items.slice(0, 3).map(async (folder) => {
+        const payload = await jellyfinFetch<{ Items: JellyfinItem[] }>(
+          `/Items?ParentId=${folder.Id}&Recursive=true&IncludeItemTypes=Movie,Series,Episode&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,Genres,RunTimeTicks,PremiereDate,CommunityRating`,
+        );
+
+        return {
+          id: folder.Id,
+          title: folder.Name,
+          items: payload.Items.map(mapItem),
+        };
+      }),
+    );
+
+    return [
+      {
+        id: "latest",
+        title: "Just Added",
+        items: latest.map(mapItem),
+      },
+      ...dynamicSections.filter((section) => section.items.length > 0),
+    ];
+  } catch {
+    return null;
+  }
+}
 
 function hasLiveJellyfin() {
   return Boolean(env.jellyfinBaseUrl && env.JELLYFIN_API_KEY);
@@ -73,53 +120,44 @@ function mapItem(item: JellyfinItem): MediaItem {
 }
 
 export async function getHomeSections(): Promise<JellyfinSection[]> {
-  if (!hasLiveJellyfin()) {
-    return mockSections;
+  const [manualSections, jellyfinSections] = await Promise.all([
+    listManualSections(),
+    getJellyfinSections(),
+  ]);
+
+  if (manualSections.length && jellyfinSections?.length) {
+    return [...manualSections, ...jellyfinSections];
   }
 
-  try {
-    const [latest, folders] = await Promise.all([
-      jellyfinFetch<JellyfinItem[]>(
-        `/Items/Latest?Limit=12&Fields=Overview,Genres,RunTimeTicks,PremiereDate,CommunityRating`,
-      ),
-      jellyfinFetch<{ Items: Array<{ Id: string; Name: string }> }>(
-        "/Library/MediaFolders",
-      ),
-    ]);
-
-    const dynamicSections = await Promise.all(
-      folders.Items.slice(0, 3).map(async (folder) => {
-        const payload = await jellyfinFetch<{ Items: JellyfinItem[] }>(
-          `/Items?ParentId=${folder.Id}&Recursive=true&IncludeItemTypes=Movie,Series,Episode&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,Genres,RunTimeTicks,PremiereDate,CommunityRating`,
-        );
-
-        return {
-          id: folder.Id,
-          title: folder.Name,
-          items: payload.Items.map(mapItem),
-        };
-      }),
-    );
-
-    return [
-      {
-        id: "latest",
-        title: "Just Added",
-        items: latest.map(mapItem),
-      },
-      ...dynamicSections.filter((section) => section.items.length > 0),
-    ];
-  } catch {
-    return mockSections;
+  if (manualSections.length) {
+    return manualSections;
   }
+
+  if (jellyfinSections?.length) {
+    return jellyfinSections;
+  }
+
+  return mockSections;
 }
 
 export async function getFeaturedMedia() {
+  const manualItems = await listManualCatalogItems();
+
+  if (manualItems.length) {
+    return manualItems[0];
+  }
+
   const sections = await getHomeSections();
   return sections[0]?.items[0] ?? mockMedia[0];
 }
 
 export async function getMediaItem(itemId: string) {
+  const manualItem = await getManualCatalogItem(itemId);
+
+  if (manualItem) {
+    return manualItem;
+  }
+
   if (!hasLiveJellyfin()) {
     return mockMedia.find((item) => item.id === itemId) ?? mockMedia[0];
   }

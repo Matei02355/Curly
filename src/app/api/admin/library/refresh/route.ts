@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { writeAuditLog } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth/guards";
 import { refreshLibrary } from "@/lib/media/jellyfin";
-import { assertSameOrigin, getRequestContext } from "@/lib/request";
+import { assertSameOrigin, buildPublicUrl, getRequestContext } from "@/lib/request";
 
 export async function POST(request: Request) {
   const context = await getRequestContext(request);
@@ -21,11 +21,13 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.redirect(
-      new URL("/admin/security?success=Library+refresh+requested", request.url),
+      buildPublicUrl(request, "/admin/security?success=Library+refresh+requested"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Refresh+failed";
-    return NextResponse.redirect(new URL(`/admin/security?error=${message}`, request.url));
+    return NextResponse.redirect(
+      buildPublicUrl(request, `/admin/security?error=${message}`),
+    );
   }
 }
