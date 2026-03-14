@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 
 import { headers } from "next/headers";
 
+import { env } from "@/lib/env";
+
 export async function getRequestContext(request?: Request | NextRequest) {
   if (request) {
     return {
@@ -46,4 +48,31 @@ export function readFormValue(
 ) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+function readFirstHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || null;
+}
+
+export function getPublicOrigin(request: Request | NextRequest) {
+  const requestUrl = new URL(request.url);
+  const protocol =
+    readFirstHeaderValue(request.headers.get("x-forwarded-proto")) ??
+    requestUrl.protocol.replace(/:$/, "");
+  const host =
+    readFirstHeaderValue(request.headers.get("x-forwarded-host")) ??
+    readFirstHeaderValue(request.headers.get("host"));
+
+  if (!host) {
+    return env.APP_URL;
+  }
+
+  return `${protocol}://${host}`;
+}
+
+export function buildPublicUrl(
+  request: Request | NextRequest,
+  pathname: string,
+) {
+  return new URL(pathname, getPublicOrigin(request));
 }

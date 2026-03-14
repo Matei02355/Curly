@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { writeAuditLog } from "@/lib/audit";
 import { clearSessionCookie, getSession, revokeSessionByToken } from "@/lib/auth/session";
 import { env } from "@/lib/env";
-import { assertSameOrigin, getRequestContext } from "@/lib/request";
+import { assertSameOrigin, buildPublicUrl, getRequestContext } from "@/lib/request";
 
 export async function POST(request: Request) {
   const context = await getRequestContext(request);
@@ -35,5 +35,5 @@ export async function POST(request: Request) {
     await clearSessionCookie();
   }
 
-  return NextResponse.redirect(new URL("/login?message=Logged+out", request.url));
+  return NextResponse.redirect(buildPublicUrl(request, "/login?message=Logged+out"));
 }

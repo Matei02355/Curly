@@ -5,7 +5,12 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { markSessionElevated } from "@/lib/auth/session";
 import { verifyTotpToken } from "@/lib/auth/totp";
 import { prisma } from "@/lib/prisma";
-import { assertSameOrigin, getRequestContext, readFormValue } from "@/lib/request";
+import {
+  assertSameOrigin,
+  buildPublicUrl,
+  getRequestContext,
+  readFormValue,
+} from "@/lib/request";
 
 export async function POST(request: Request) {
   const context = await getRequestContext(request);
@@ -23,7 +28,7 @@ export async function POST(request: Request) {
 
     if (!totp || !verifyTotpToken(totp.secret, code)) {
       return NextResponse.redirect(
-        new URL("/setup/2fa?error=Invalid+verification+code", request.url),
+        buildPublicUrl(request, "/setup/2fa?error=Invalid+verification+code"),
       );
     }
 
@@ -47,11 +52,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.redirect(
-      new URL("/admin/security?success=Admin+2FA+enabled", request.url),
+      buildPublicUrl(request, "/admin/security?success=Admin+2FA+enabled"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Verification+failed";
-    return NextResponse.redirect(new URL(`/setup/2fa?error=${message}`, request.url));
+    return NextResponse.redirect(buildPublicUrl(request, `/setup/2fa?error=${message}`));
   }
 }

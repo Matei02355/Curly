@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { writeAuditLog } from "@/lib/audit";
 import { createSessionToken } from "@/lib/auth/session";
 import { assertRateLimit, clearRateLimit } from "@/lib/rate-limit";
-import { assertSameOrigin, getRequestContext, readFormValue } from "@/lib/request";
+import {
+  assertSameOrigin,
+  buildPublicUrl,
+  getRequestContext,
+  readFormValue,
+} from "@/lib/request";
 import { authenticateWithPassword } from "@/lib/users";
 
 export async function POST(request: Request) {
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
         userAgent: context.userAgent,
       });
       return NextResponse.redirect(
-        new URL("/login?error=Invalid+username+or+password", request.url),
+        buildPublicUrl(request, "/login?error=Invalid+username+or+password"),
       );
     }
 
@@ -53,11 +58,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.redirect(
-      new URL(user.role === "ADMIN" ? "/setup/2fa" : "/", request.url),
+      buildPublicUrl(request, user.role === "ADMIN" ? "/setup/2fa" : "/"),
     );
   } catch (error) {
     const message =
       error instanceof Error ? error.message.replace(/\s+/g, "+") : "Login+failed";
-    return NextResponse.redirect(new URL(`/login?error=${message}`, request.url));
+    return NextResponse.redirect(buildPublicUrl(request, `/login?error=${message}`));
   }
 }
