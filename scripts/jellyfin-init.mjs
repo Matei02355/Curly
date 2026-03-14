@@ -2,6 +2,25 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const envPath = path.resolve(process.cwd(), ".env");
+const installClientHeader =
+  'MediaBrowser Client="Curly Setup", Device="Install Script", DeviceId="curly-install", Version="1.0.0"';
+const desiredLibraries = [
+  {
+    name: "Movies",
+    collectionType: "movies",
+    path: "/media/movies",
+  },
+  {
+    name: "Anime",
+    collectionType: "tvshows",
+    path: "/media/anime",
+  },
+  {
+    name: "Shows",
+    collectionType: "tvshows",
+    path: "/media/shows",
+  },
+];
 
 function readEnvFile(text) {
   return Object.fromEntries(
@@ -41,6 +60,188 @@ async function waitForServer(baseUrl) {
   throw new Error("Jellyfin did not become ready in time.");
 }
 
+function buildAuthenticatedHeaders(token) {
+  return {
+    "X-Emby-Token": token,
+    Authorization: `${installClientHeader}, Token="${token}"`,
+  };
+}
+
+async function readErrorBody(response) {
+  try {
+    const body = (await response.text()).trim();
+    return body ? ` ${body}` : "";
+  } catch {
+    return "";
+  }
+}
+
+async function assertOk(response, context) {
+  if (response.ok) {
+    return response;
+  }
+
+  throw new Error(`${context}: ${response.status}${await readErrorBody(response)}`);
+}
+
+async function authenticateServiceUser(baseUrl, username, password) {
+  const response = await fetch(`${baseUrl}/Users/AuthenticateByName`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: installClientHeader,
+    },
+    body: JSON.stringify({
+      Username: username,
+      Pw: password,
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json();
+}
+
+async function attemptStartupBootstrap(baseUrl, values, username, password) {
+  const requests = [
+    {
+      path: "/Startup/Configuration",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ServerName: values.JELLYFIN_SERVER_NAME ?? "Curly Media",
+          UICulture: "en-US",
+          MetadataCountryCode: "US",
+          PreferredMetadataLanguage: "en",
+        }),
+      },
+    },
+    {
+      path: "/Startup/User",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Name: username,
+          Password: password,
+        }),
+      },
+    },
+    {
+      path: "/Startup/RemoteAccess",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          EnableRemoteAccess: false,
+          EnableAutomaticPortMapping: false,
+        }),
+      },
+    },
+    {
+      path: "/Startup/Complete",
+      init: {
+        method: "POST",
+      },
+    },
+  ];
+
+  for (const request of requests) {
+    const response = await fetch(`${baseUrl}${request.path}`, request.init);
+    if (!response.ok) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function getLibraries(baseUrl, authHeaders) {
+  const response = await fetch(`${baseUrl}/Library/MediaFolders`, {
+    headers: authHeaders,
+    cache: "no-store",
+  });
+
+  await assertOk(response, "Failed to read Jellyfin libraries");
+  return response.json();
+}
+
+async function ensureLibraries(baseUrl, authHeaders) {
+  const existing = await getLibraries(baseUrl, authHeaders);
+  const existingNames = new Set(
+    (existing.Items ?? [])
+      .map((item) => item?.Name?.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  for (const library of desiredLibraries) {
+    if (existingNames.has(library.name.toLowerCase())) {
+      continue;
+    }
+
+    const params = new URLSearchParams({
+      name: library.name,
+      collectionType: library.collectionType,
+      paths: library.path,
+      refreshLibrary: "true",
+    });
+    const response = await fetch(`${baseUrl}/Library/VirtualFolders?${params.toString()}`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+
+    await assertOk(response, `Failed to create Jellyfin library ${library.name}`);
+  }
+}
+
+async function getApiKeys(baseUrl, authHeaders) {
+  const response = await fetch(`${baseUrl}/Auth/Keys`, {
+    headers: authHeaders,
+    cache: "no-store",
+  });
+
+  await assertOk(response, "Failed to read Jellyfin API keys");
+  return response.json();
+}
+
+function findCurlyApiKey(items) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.AppName === "Curly" && item?.AccessToken) {
+      return item;
+    }
+  }
+
+  return null;
+}
+
+async function ensureCurlyApiKey(baseUrl, authHeaders) {
+  const existingKeys = await getApiKeys(baseUrl, authHeaders);
+  const existingKey = findCurlyApiKey(existingKeys.Items ?? []);
+
+  if (existingKey?.AccessToken) {
+    return existingKey;
+  }
+
+  const createResponse = await fetch(`${baseUrl}/Auth/Keys?app=Curly`, {
+    method: "POST",
+    headers: authHeaders,
+  });
+  await assertOk(createResponse, "Failed to create Curly Jellyfin API key");
+
+  const updatedKeys = await getApiKeys(baseUrl, authHeaders);
+  const createdKey = findCurlyApiKey(updatedKeys.Items ?? []);
+
+  if (!createdKey?.AccessToken) {
+    throw new Error("Could not retrieve Curly Jellyfin API key.");
+  }
+
+  return createdKey;
+}
+
 async function main() {
   const envText = await fs.readFile(envPath, "utf8");
   const values = readEnvFile(envText);
@@ -54,94 +255,26 @@ async function main() {
 
   await waitForServer(baseUrl);
 
-  await fetch(`${baseUrl}/Startup/Configuration`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ServerName: values.JELLYFIN_SERVER_NAME ?? "Curly Media",
-      UICulture: "en-US",
-      MetadataCountryCode: "US",
-      PreferredMetadataLanguage: "en",
-    }),
-  });
+  let authPayload = await authenticateServiceUser(baseUrl, username, password);
 
-  await fetch(`${baseUrl}/Startup/User`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      Name: username,
-      Password: password,
-    }),
-  });
-
-  await fetch(`${baseUrl}/Startup/RemoteAccess`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      EnableRemoteAccess: false,
-      EnableAutomaticPortMapping: false,
-    }),
-  });
-
-  await fetch(`${baseUrl}/Startup/Complete`, {
-    method: "POST",
-  });
-
-  const authResponse = await fetch(`${baseUrl}/Users/AuthenticateByName`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization:
-        'MediaBrowser Client="Curly Setup", Device="Install Script", DeviceId="curly-install", Version="1.0.0"',
-    },
-    body: JSON.stringify({
-      Username: username,
-      Pw: password,
-    }),
-  });
-
-  if (!authResponse.ok) {
-    throw new Error(`Failed to authenticate Jellyfin service user: ${authResponse.status}`);
+  if (!authPayload?.AccessToken || !authPayload.User?.Id) {
+    await attemptStartupBootstrap(baseUrl, values, username, password);
+    authPayload = await authenticateServiceUser(baseUrl, username, password);
   }
 
-  const authPayload = await authResponse.json();
   const token = authPayload.AccessToken;
   const userId = authPayload.User?.Id;
 
-  const authHeaders = {
-    "X-Emby-Token": token,
-    Authorization: `MediaBrowser Client="Curly Setup", Device="Install Script", DeviceId="curly-install", Version="1.0.0", Token="${token}"`,
-  };
-
-  await fetch(
-    `${baseUrl}/Library/VirtualFolders?name=Movies&collectionType=movies&paths=/media/movies&refreshLibrary=true`,
-    { method: "POST", headers: authHeaders },
-  );
-  await fetch(
-    `${baseUrl}/Library/VirtualFolders?name=Anime&collectionType=tvshows&paths=/media/anime&refreshLibrary=true`,
-    { method: "POST", headers: authHeaders },
-  );
-  await fetch(
-    `${baseUrl}/Library/VirtualFolders?name=Shows&collectionType=tvshows&paths=/media/shows&refreshLibrary=true`,
-    { method: "POST", headers: authHeaders },
-  );
-
-  await fetch(`${baseUrl}/Auth/Keys?app=Curly`, {
-    method: "POST",
-    headers: authHeaders,
-  });
-
-  const keysResponse = await fetch(`${baseUrl}/Auth/Keys`, {
-    headers: authHeaders,
-  });
-  const keys = await keysResponse.json();
-  const latestKey =
-    keys.Items?.findLast?.((item) => item.AppName === "Curly") ??
-    keys.Items?.[keys.Items.length - 1];
-
-  if (!latestKey?.AccessToken) {
-    throw new Error("Could not retrieve Curly Jellyfin API key.");
+  if (!token || !userId) {
+    throw new Error(
+      "Failed to authenticate the Jellyfin service user. If Jellyfin was already initialized, make sure JELLYFIN_SERVICE_PASSWORD in .env still matches that account.",
+    );
   }
+
+  const authHeaders = buildAuthenticatedHeaders(token);
+
+  await ensureLibraries(baseUrl, authHeaders);
+  const latestKey = await ensureCurlyApiKey(baseUrl, authHeaders);
 
   let nextEnv = replaceEnvValue(envText, "JELLYFIN_USER_ID", userId);
   nextEnv = replaceEnvValue(nextEnv, "JELLYFIN_API_KEY", latestKey.AccessToken);

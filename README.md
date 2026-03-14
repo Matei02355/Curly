@@ -122,6 +122,8 @@ Start from `.env.example`. Important keys:
 The repository includes `.env.example`, and `install.sh` will create `.env` from it automatically on a fresh checkout.
 Installer reruns keep the existing PostgreSQL and Jellyfin service passwords from `.env` so they stay aligned with persistent Docker volumes.
 If PostgreSQL was already initialized, the installer also re-applies the `.env` password to the `curly` database user before Prisma migrations run.
+If the first Prisma migration was interrupted, installer reruns will repair the `0001_init` state automatically before retrying.
+Jellyfin bootstrap is also rerun-safe: existing libraries and the Curly API key are reused instead of recreated.
 
 ## Operations
 

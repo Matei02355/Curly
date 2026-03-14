@@ -169,6 +169,148 @@ sync_postgres_password() {
     -c "ALTER USER curly WITH PASSWORD '${escaped_password}';" >/dev/null
 }
 
+run_postgres_query() {
+  local sql="$1"
+
+  docker compose exec -T postgres \
+    psql -U curly -d curly -tA -v ON_ERROR_STOP=1 \
+    -c "$sql"
+}
+
+wait_for_postgres() {
+  for _ in {1..60}; do
+    if pg_isready -h 127.0.0.1 -p 5432 -U curly >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "PostgreSQL did not become ready in time." >&2
+  exit 1
+}
+
+prisma_history_table_exists() {
+  [[ "$(run_postgres_query "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;")" == "t" ]]
+}
+
+get_initial_migration_state() {
+  local field="$1"
+
+  if ! prisma_history_table_exists; then
+    echo "0"
+    return
+  fi
+
+  run_postgres_query "
+    SELECT COUNT(*)
+    FROM public._prisma_migrations
+    WHERE migration_name = '0001_init'
+      AND ${field};
+  " | tr -d '[:space:]'
+}
+
+get_curly_table_count() {
+  run_postgres_query "
+    SELECT COUNT(*)
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name IN ('User', 'Session', 'TotpSecret', 'AuditLog', 'AppSetting');
+  " | tr -d '[:space:]'
+}
+
+curly_role_enum_exists() {
+  [[ "$(run_postgres_query "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Role');")" == "t" ]]
+}
+
+detect_curly_schema_state() {
+  local table_count
+  table_count="$(get_curly_table_count)"
+
+  if [[ "$table_count" == "0" ]] && ! curly_role_enum_exists; then
+    echo "empty"
+    return
+  fi
+
+  if [[ "$table_count" == "5" ]] && curly_role_enum_exists; then
+    echo "complete"
+    return
+  fi
+
+  echo "partial"
+}
+
+reset_curly_public_schema() {
+  echo "Detected an incomplete Curly schema from a failed install. Resetting the database schema and retrying migrations."
+
+  run_postgres_query "
+    DROP SCHEMA public CASCADE;
+    CREATE SCHEMA public AUTHORIZATION curly;
+    GRANT ALL ON SCHEMA public TO public;
+  " >/dev/null
+}
+
+attempt_prisma_auto_repair() {
+  local schema_state
+  local failed_initial_migrations
+  local applied_initial_migrations
+
+  schema_state="$(detect_curly_schema_state)"
+  failed_initial_migrations="$(get_initial_migration_state "finished_at IS NULL AND rolled_back_at IS NULL")"
+  applied_initial_migrations="$(get_initial_migration_state "finished_at IS NOT NULL")"
+
+  if [[ "$failed_initial_migrations" != "0" ]]; then
+    if [[ "$applied_initial_migrations" != "0" ]]; then
+      echo "Prisma recorded both applied and failed copies of 0001_init. Resolve _prisma_migrations manually before rerunning install.sh." >&2
+      exit 1
+    fi
+
+    case "$schema_state" in
+      empty)
+        echo "Detected a failed 0001_init record without Curly tables. Marking it rolled back and retrying."
+        npx prisma migrate resolve --rolled-back 0001_init >/dev/null
+        return 0
+        ;;
+      complete)
+        echo "Detected a fully applied Curly schema with a failed 0001_init record. Resolving it as applied and continuing."
+        npx prisma migrate resolve --applied 0001_init >/dev/null
+        return 0
+        ;;
+      partial)
+        reset_curly_public_schema
+        return 0
+        ;;
+    esac
+  fi
+
+  if [[ "$schema_state" == "complete" ]] && ! prisma_history_table_exists; then
+    echo "Detected an existing Curly schema without Prisma migration history. Marking 0001_init as applied."
+    npx prisma migrate resolve --applied 0001_init >/dev/null
+    return 0
+  fi
+
+  if [[ "$schema_state" == "partial" ]] && ! prisma_history_table_exists; then
+    reset_curly_public_schema
+    return 0
+  fi
+
+  return 1
+}
+
+apply_prisma_migrations() {
+  if npm run prisma:migrate:deploy; then
+    return
+  fi
+
+  echo "Prisma migrate deploy failed. Checking whether the initial Curly migration can be repaired automatically."
+
+  if ! attempt_prisma_auto_repair; then
+    echo "Prisma migrate deploy failed and the installer could not identify a safe automatic recovery path." >&2
+    exit 1
+  fi
+
+  npm run prisma:migrate:deploy
+}
+
 if [[ -z "$SERVER_IPV4" && -z "$SERVER_IPV6" ]]; then
   echo "Unable to determine this server's public IP for DNS validation." >&2
   exit 1
@@ -250,16 +392,11 @@ npm run prisma:generate
 
 docker compose up -d postgres jellyfin filebrowser
 
-for _ in {1..60}; do
-  if pg_isready -h 127.0.0.1 -p 5432 -U curly >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
+wait_for_postgres
 
 sync_postgres_password
 
-npm run prisma:migrate:deploy
+apply_prisma_migrations
 npm run bootstrap-admin -- --username "$ADMIN_USER" --password "$ADMIN_PASSWORD"
 node "$PROJECT_DIR/scripts/jellyfin-init.mjs"
 docker compose up -d --build app
